@@ -14,14 +14,14 @@ int main(int argc, char **argv)
     int client_len;
     char buf[MAXLINE];
 
-    if ((server_sockfd = socket(AF_INET, SOCK_STREAM, 0)) == -1) 
+    /* TCP 기반 통신의 소켓 생성 */
+    if ((server_sockfd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP)) == -1) 
     {
         perror("error :");
         return 1;
     }
 
     /* 연결요청할 서버의 주소와 포트번호 프로토콜등을 지정한다. */
-    server_sockfd = socket(AF_INET, SOCK_STREAM, 0);
     serveraddr.sin_family = AF_INET;
     serveraddr.sin_addr.s_addr = inet_addr("127.0.0.1");
     serveraddr.sin_port = htons(3600);
@@ -49,7 +49,8 @@ int main(int argc, char **argv)
         perror("read error : ");
         return 1;
     }
-    printf("read : %s", buf);
+    printf("read : %s\n", buf);
     close(server_sockfd);
     return 0;
 }
+
