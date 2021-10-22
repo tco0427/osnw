@@ -10,39 +10,44 @@
 #include <sys/time.h>
 
 #define PORT 3600
+#define MAXBUF 1024
 
-struct cal_data
+struct aggregate
 {
-        int left_num;
-        int right_num;
-        char op;
-        int result;
-        short int error;
+        int max;
+	struct sockaddr_in max_addr;
+        int min;
+	struct sockaddr_in min_addr;
+	char avg[MAXBUF];
 };
 
 int main(int argc, char **argv)
 {
-        struct sockaddr_in client_addr, sock_addr;
-        int listen_sockfd, client_sockfd;
-        int addr_len;
-        struct cal_data rdata;
-        int left_num, right_num, cal_result;
-        short int cal_error;
+        struct sockaddr_in sock_addr;
+        int listen_sockfd;
+        int client_sockfd[3];
+	int addr_len[3];
+        int i, n, num;
+	char buf[MAXBUF];
+        float sum, avg;
+	struct aggregate result;
+	struct sockaddr_in client_addrs[3];
 
-        if( (listen_sockfd  = socket(AF_INET, SOCK_STREAM, 0)) == -1)
+        if((listen_sockfd  = socket(AF_INET, SOCK_STREAM, 0)) == -1)
         {
                 perror("Error ");
                 return 1;
         }
 
         memset((void *)&sock_addr, 0x00, sizeof(sock_addr));
+
         sock_addr.sin_family = AF_INET;
         sock_addr.sin_addr.s_addr = htonl(INADDR_ANY);
         sock_addr.sin_port = htons(PORT);
 
-        if( bind(listen_sockfd, (struct sockaddr *)&sock_addr, sizeof(sock_addr)) == -1)
+        if(bind(listen_sockfd, (struct sockaddr *)&sock_addr, sizeof(sock_addr)) == -1)
         {
-                perror("Error ");
+                perror("bind error ");
                 return 1;
         }
 
@@ -52,56 +57,85 @@ int main(int argc, char **argv)
                 return 1;
         }
 
-        for(;;)
+        while(1)
         {
-                addr_len = sizeof(client_addr);
-                client_sockfd = accept(listen_sockfd,
-                        (struct sockaddr *)&client_addr, &addr_len);
-                if(client_sockfd == -1)
-                {
-                        perror("Error ");
-                        return 1;
-                }
-printf("New Client Connect : %s\n", inet_ntoa(client_addr.sin_addr));
 
-                read(client_sockfd, (void *)&rdata, sizeof(rdata));
+		memset((void **)&client_addrs, 0x00, (3 * sizeof(client_addrs[0])));
 
-                cal_result = 0;
-                cal_error = 0;
+		for(i = 0; i<3; i++)
+		{
+			addr_len[i] = sizeof(client_addrs[i]);
+			client_sockfd[i] = accept(listen_sockfd, (struct sockaddr *)&client_addrs[i], &addr_len[i]);
+			
+			if(client_sockfd[i] == -1)
+			{
+				perror("Error ");
+				return 1;
+			}
 
-                left_num = ntohl(rdata.left_num);
-                right_num = ntohl(rdata.right_num);
+			printf("New Client[%d] Connect: %s\n", i, inet_ntoa(client_addrs[i].sin_addr));
+		}
 
-                switch(rdata.op)
-                {
-                        case '+':
-                                cal_result = left_num + right_num;
-                                break;
-                        case '-':
-                                cal_result = left_num  - right_num;
-                                break;
-                        case '*':
-                                cal_result = left_num * right_num;
-                                break;
-                        case '/':
-                                if(right_num == 0)
-                                {
-                                        cal_error = 2;
-                                        break;
-                                }
-                                cal_result = left_num / right_num;
-                                break;
-                        default:
-                                cal_error = 1;
+		memset((void *)&result, 0x00, sizeof(result));
 
-                }
-                rdata.result = htonl(cal_result);
-                rdata.error = htons(cal_error);
-                write(client_sockfd, (void *)&rdata, sizeof(rdata));
-                close(client_sockfd);
+		result.max = 0;
+		result.min = 2147483647;	//int형 최댓값
+		sum = 0.0;
+
+              	for(i = 0; i<3; i++)
+		{
+			memset(&buf, 0x00, sizeof(buf));
+
+			if((n = read(client_sockfd[i], buf, MAXBUF)) <= 0)
+			{
+				close(client_sockfd[i]);
+
+				perror("Error ");
+				return 1;
+			}
+
+			num = atoi(buf);
+
+			printf("from client[%d] : %d\n", i, num);
+			
+			if(result.max < num)
+			{
+				result.max = num;
+				result.max_addr = client_addrs[i];
+			}
+
+			if(result.min > num)
+			{
+				result.min = num;
+				result.min_addr = client_addrs[i];
+			}
+
+			sum = sum + num;
+		}	
+		
+		avg = (sum /3.0);
+
+		sprintf(result.avg, "%f", avg);
+
+		result.max = htonl(result.max);
+		result.min = htonl(result.min);
+	
+		//port(sin_port)는 2바이트(unsigned short)이므로 htons() 사용	
+		result.min_addr.sin_port = htons(result.min_addr.sin_port);
+		result.max_addr.sin_port = htons(result.max_addr.sin_port);
+
+		for(i = 0; i<3; i++)
+		{
+			if (write(client_sockfd[i], (void *)&result, sizeof(result)) <=0)
+			{
+				perror("write error : ");
+				close(client_sockfd[i]);
+			}
+			close(client_sockfd[i]);
+		}
         }
-
         close(listen_sockfd);
+
         return 0;
 }
 
