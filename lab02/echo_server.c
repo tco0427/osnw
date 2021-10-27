@@ -57,7 +57,7 @@ int main(int argc, char **argv)
             		}
             		printf("from clinet[%d] : %s\n", loop, buf);
 
-			buf[strlen(buf)-1] = ' ';
+                    buf[strlen(buf)-1] = ' ';
             		strcat(result,buf);
         	}
         	for(loop = 0; loop<3; loop++){
