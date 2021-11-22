@@ -15,6 +15,7 @@ void *t_func(void *data)
 
 	while(1)
 	{
+		sleep(1);
 		pthread_mutex_lock(&m_lock);
 		tmp = *count;
 		tmp++;
